@@ -24,29 +24,36 @@ using namespace cv;
 class SimpleMicrosoftViewer
 {
 public:
-	SimpleMicrosoftViewer () : normals(new pcl::PointCloud<pcl::Normal>), sharedCloud(new pcl::PointCloud<pcl::PointXYZRGBA>), first(false), update(false) {}
+	SimpleMicrosoftViewer () : viewer(new pcl::visualization::PCLVisualizer ("PCL Microsoft Viewer")), normals(new pcl::PointCloud<pcl::Normal>), sharedCloud(new pcl::PointCloud<pcl::PointXYZRGBA>), first(false), update(false) {}
 
-	void cloud_cb_ (const boost::shared_ptr<const KinectData> &data)
+	void cloud_cb_ (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&data)
 	{
-		/*if (!viewer.wasStopped())
-		viewer.showCloud (cloud);*/
 		// estimate normals
-		imshow("image", data->image);
+		/*imshow("image", *(data->image));
 		imshow("depth", data->depth);
-		waitKey(15);
-		//if(!data->cloud.empty()) {
-		//	normalMutex.lock();
-		//	copyPointCloud(data->cloud,*sharedCloud);
-		//	pcl::IntegralImageNormalEstimation<pcl::PointXYZRGBA, pcl::Normal> ne;
-		//	ne.setNormalEstimationMethod (ne.AVERAGE_3D_GRADIENT);
-		//	ne.setMaxDepthChangeFactor(0.02f);
-		//	ne.setNormalSmoothingSize(10.0f);
-		//	ne.setInputCloud(sharedCloud);
-		//	ne.compute(*normals);
-		//	//sharedCloud = cloud;
-		//	update = true;
-		//	normalMutex.unlock();
-		//}
+		waitKey(2);*/
+		if(!data->empty()) {
+			normalMutex.lock();
+			copyPointCloud(*data,*sharedCloud);
+			/*pcl::IntegralImageNormalEstimation<pcl::PointXYZRGBA, pcl::Normal> ne;
+			ne.setNormalEstimationMethod (ne.AVERAGE_3D_GRADIENT);
+			ne.setMaxDepthChangeFactor(0.02f);
+			ne.setNormalSmoothingSize(10.0f);
+			ne.setInputCloud(sharedCloud);
+			ne.compute(*normals);*/
+			update = true;
+			normalMutex.unlock();
+		}
+	}
+
+	void image_cb_ (const Mat *image) {
+		imshow("image",*image);
+		waitKey(1);
+	}
+
+	void depth_cb_ (const MatDepth &depth) {
+		imshow("depth",depth);
+		waitKey(1);
 	}
 
 	void run ()
@@ -55,29 +62,35 @@ public:
 		pcl::Grabber* my_interface = new pcl::Microsoft2Grabber();
 
 		// make callback function from member function
-		boost::function<void (const boost::shared_ptr<const KinectData>&)> f =
-		boost::bind (&SimpleMicrosoftViewer::cloud_cb_, this, _1);
+		//boost::function<void (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&)> f =
+		//boost::bind (&SimpleMicrosoftViewer::cloud_cb_, this, _1);
+		boost::function<void (const Mat*)> f2 =
+		boost::bind (&SimpleMicrosoftViewer::image_cb_, this, _1);
+		boost::function<void (const MatDepth&)> f3 =
+		boost::bind (&SimpleMicrosoftViewer::depth_cb_, this, _1);
 
-		my_interface->registerCallback (f);
+		//my_interface->registerCallback (f);
+		my_interface->registerCallback (f2);
+		my_interface->registerCallback (f3);
 
 		//viewer.setBackgroundColor(0.0, 0.0, 0.5);
 		my_interface->start ();
 		Sleep(30);
-		while(1)
-			boost::this_thread::sleep (boost::posix_time::seconds (2));
-		/*while (!viewer->wasStopped())
+		//while(1)
+		//	boost::this_thread::sleep (boost::posix_time::seconds (1));
+		while (!viewer->wasStopped())
 		{
 			normalMutex.lock();
 			if(update) {
-				viewer->removePointCloud("cloud");
+				//viewer->removePointCloud("cloud");
 				viewer->removePointCloud("original");
 				viewer->addPointCloud(sharedCloud,"original");
-				viewer->addPointCloudNormals<pcl::PointXYZRGBA,pcl::Normal>(sharedCloud, normals);
+				//viewer->addPointCloudNormals<pcl::PointXYZRGBA,pcl::Normal>(sharedCloud, normals);
 				update = false;
 			}
 			viewer->spinOnce();
 			normalMutex.unlock();
-		}*/
+		}
 
 		my_interface->stop ();
 	}
@@ -104,7 +117,7 @@ public:
 
 	boost::shared_ptr<pcl::PointCloud<pcl::Normal>> normals;
 	boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA>> sharedCloud;
-	//boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
+	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
 	bool first, update;
 	boost::mutex normalMutex;
 };
