@@ -646,7 +646,7 @@ namespace pcl {
 		ColorSpacePoint *pColor = m_pColorCoordinates;
 		CameraSpacePoint *pCamera = m_pCameraSpacePoints;
 		float bad_point = std::numeric_limits<float>::quiet_NaN ();
-		int x,y, safeWidth = cDepthWidth - 1, safeHeight = cDepthHeight - 1;
+		int x,y, safeWidth = cColorWidth - 1, safeHeight = cColorHeight - 1;
 		for(int j = 0; j < cDepthHeight; j++) {
 			for(int i = 0; i < cDepthWidth; i++) {
 				PointXYZRGBA loc;

@@ -62,16 +62,16 @@ public:
 		pcl::Grabber* my_interface = new pcl::Microsoft2Grabber();
 
 		// make callback function from member function
-		//boost::function<void (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&)> f =
-		//boost::bind (&SimpleMicrosoftViewer::cloud_cb_, this, _1);
-		boost::function<void (const Mat*)> f2 =
+		boost::function<void (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&)> f =
+		boost::bind (&SimpleMicrosoftViewer::cloud_cb_, this, _1);
+		/*boost::function<void (const Mat*)> f2 =
 		boost::bind (&SimpleMicrosoftViewer::image_cb_, this, _1);
 		boost::function<void (const MatDepth&)> f3 =
-		boost::bind (&SimpleMicrosoftViewer::depth_cb_, this, _1);
+		boost::bind (&SimpleMicrosoftViewer::depth_cb_, this, _1);*/
 
-		//my_interface->registerCallback (f);
-		my_interface->registerCallback (f2);
-		my_interface->registerCallback (f3);
+		my_interface->registerCallback (f);
+		/*my_interface->registerCallback (f2);
+		my_interface->registerCallback (f3);*/
 
 		//viewer.setBackgroundColor(0.0, 0.0, 0.5);
 		my_interface->start ();
