@@ -16,6 +16,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <deque>
 
 using namespace std;
 using namespace pcl;
@@ -35,25 +36,62 @@ public:
 		if(!data->empty()) {
 			normalMutex.lock();
 			copyPointCloud(*data,*sharedCloud);
-			/*pcl::IntegralImageNormalEstimation<pcl::PointXYZRGBA, pcl::Normal> ne;
+			pcl::IntegralImageNormalEstimation<pcl::PointXYZRGBA, pcl::Normal> ne;
 			ne.setNormalEstimationMethod (ne.AVERAGE_3D_GRADIENT);
 			ne.setMaxDepthChangeFactor(0.02f);
 			ne.setNormalSmoothingSize(10.0f);
 			ne.setInputCloud(sharedCloud);
-			ne.compute(*normals);*/
+			ne.compute(*normals);
 			update = true;
 			normalMutex.unlock();
 		}
 	}
 
-	void image_cb_ (const Mat *image) {
-		imshow("image",*image);
-		waitKey(1);
+	void image_cb_ (const boost::shared_ptr<Mat> &image) {
+		if(image && !image->empty()) {
+			imshow("image",*image);
+			waitKey(1);
+			//image->release();
+		}
+		/*cout << "writing image" << endl;
+		images.push_back(*image);*/
 	}
 
 	void depth_cb_ (const MatDepth &depth) {
 		imshow("depth",depth);
 		waitKey(1);
+		//((Mat)(depth)).release();
+		/*cout << "writing depth" << endl;
+		depths.push_back(depth);*/
+	}
+
+	void savedata() {
+		// create a new grabber for OpenNI devices
+		pcl::Grabber* my_interface = new pcl::Microsoft2Grabber();
+
+		// make callback function from member function
+		boost::function<void (const boost::shared_ptr<Mat>&)> f2 =
+			boost::bind (&SimpleMicrosoftViewer::image_cb_, this, _1);
+		boost::function<void (const MatDepth&)> f3 =
+			boost::bind (&SimpleMicrosoftViewer::depth_cb_, this, _1);
+
+		my_interface->start ();
+		boost::this_thread::sleep(boost::posix_time::milliseconds(30));
+		int num = 0;
+		while(1) {
+			//cout << "buffer empty" << endl;
+			if(!images.empty() && !depths.empty()) {
+				stringstream buffer, buffer2;
+				buffer << num << "_color.png";
+				imwrite(buffer.str(),images.front());
+				buffer2 << num << "_depth.png";
+				imwrite(buffer2.str(),depths.front());
+				images.pop_front();
+				depths.pop_front();
+				num++;
+				cout << "Wrote images" <<endl;
+			}
+		}
 	}
 
 	void run ()
@@ -63,15 +101,15 @@ public:
 
 		// make callback function from member function
 		boost::function<void (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&)> f =
-		boost::bind (&SimpleMicrosoftViewer::cloud_cb_, this, _1);
-		/*boost::function<void (const Mat*)> f2 =
-		boost::bind (&SimpleMicrosoftViewer::image_cb_, this, _1);
-		boost::function<void (const MatDepth&)> f3 =
-		boost::bind (&SimpleMicrosoftViewer::depth_cb_, this, _1);*/
+			boost::bind (&SimpleMicrosoftViewer::cloud_cb_, this, _1);
+		//boost::function<void (const boost::shared_ptr<Mat>&)> f2 =
+		//	boost::bind (&SimpleMicrosoftViewer::image_cb_, this, _1);
+		//boost::function<void (const MatDepth&)> f3 =
+		//	boost::bind (&SimpleMicrosoftViewer::depth_cb_, this, _1);
 
 		my_interface->registerCallback (f);
-		/*my_interface->registerCallback (f2);
-		my_interface->registerCallback (f3);*/
+		//my_interface->registerCallback (f2);
+		//my_interface->registerCallback (f3);
 
 		//viewer.setBackgroundColor(0.0, 0.0, 0.5);
 		my_interface->start ();
@@ -82,10 +120,10 @@ public:
 		{
 			normalMutex.lock();
 			if(update) {
-				//viewer->removePointCloud("cloud");
+				viewer->removePointCloud("cloud");
 				viewer->removePointCloud("original");
 				viewer->addPointCloud(sharedCloud,"original");
-				//viewer->addPointCloudNormals<pcl::PointXYZRGBA,pcl::Normal>(sharedCloud, normals);
+				viewer->addPointCloudNormals<pcl::PointXYZRGBA,pcl::Normal>(sharedCloud, normals);
 				update = false;
 			}
 			viewer->spinOnce();
@@ -112,9 +150,11 @@ public:
 		//viewer.addPointCloud<PointXYZRGBA>(cloud,"original");
 		/*viewer->addPointCloudNormals<pcl::PointXYZRGBA,pcl::Normal>(cloud, normals);
 		while (!viewer->wasStopped())
-			viewer->spinOnce(100);*/
+		viewer->spinOnce(100);*/
 	}
 
+	deque<Mat> images;
+	deque<MatDepth> depths;
 	boost::shared_ptr<pcl::PointCloud<pcl::Normal>> normals;
 	boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA>> sharedCloud;
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;

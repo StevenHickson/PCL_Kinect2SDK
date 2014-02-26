@@ -55,10 +55,10 @@ namespace pcl
 	class KinectData {
 	public:
 		KinectData() { };
-		KinectData(const cv::Mat *image_, const MatDepth &depth_, const PointCloud<PointXYZRGBA> &cloud_) : image(image_), depth(depth_), cloud(cloud_) { };
+		KinectData(const cv::Mat &image_, const MatDepth &depth_, const PointCloud<PointXYZRGBA> &cloud_) : image(image_), depth(depth_), cloud(cloud_) { };
 
 		pcl::PointCloud<pcl::PointXYZRGBA> cloud;
-		const cv::Mat *image;
+		cv::Mat image;
 		MatDepth depth;
 	};
 
@@ -79,7 +79,7 @@ namespace pcl
 		} Mode;
 
 		//define callback signature typedefs
-		typedef void (sig_cb_microsoft_image) (const cv::Mat *);
+		typedef void (sig_cb_microsoft_image) (const boost::shared_ptr<cv::Mat> &);
 		typedef void (sig_cb_microsoft_depth_image) (const MatDepth &);
 		typedef void (sig_cb_microsoft_point_cloud_rgba) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&);
 		typedef void (sig_cb_microsoft_all_data) (const boost::shared_ptr<const KinectData> &);
@@ -123,7 +123,7 @@ namespace pcl
 		ICoordinateMapper*      m_pCoordinateMapper;
 		bool CameraSettingsSupported;
 
-		void GetPointCloudFromData(const cv::Mat *img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool useZeros, bool alignToColor, bool preregistered) const;
+		void GetPointCloudFromData(const boost::shared_ptr<cv::Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool useZeros, bool alignToColor, bool preregistered) const;
 
 		//These should not be called except within the thread by the KinectCapture class process manager
 		void ProcessThreadInternal();
@@ -138,7 +138,7 @@ namespace pcl
 		boost::signals2::signal<sig_cb_microsoft_point_cloud_i>* point_cloud_i_signal_;
 		boost::signals2::signal<sig_cb_microsoft_point_cloud_rgb>* point_cloud_rgb_signal_;
 		*/
-		Synchronizer<cv::Mat*, MatDepth > rgb_sync_;
+		Synchronizer<boost::shared_ptr<cv::Mat>, MatDepth > rgb_sync_;
 
 		bool m_depthStarted, m_videoStarted, m_audioStarted, m_infraredStarted, m_person, m_preregistered;
 		// Current Kinect
@@ -174,8 +174,8 @@ namespace pcl
 		void BodyIndexFrameArrived(IBodyIndexFrameReference* pBodyIndexFrameReference);
 		bool GetCameraSettings();
 
-		void imageDepthImageCallback(const cv::Mat *image, const MatDepth &depth_image);
-		boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA> > convertToXYZRGBAPointCloud (const cv::Mat *image,
+		void imageDepthImageCallback(const boost::shared_ptr<cv::Mat> &image, const MatDepth &depth_image);
+		boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA> > convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image,
 			const MatDepth &depth_image) const;
 		/** \brief Convert a Depth + RGB image pair to a pcl::PointCloud<PointT>
 		* \param[in] image the RGB image to convert

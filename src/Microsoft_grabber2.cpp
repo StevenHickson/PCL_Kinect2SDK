@@ -225,112 +225,6 @@ namespace pcl {
 		return 30.0f;
 	}
 
-	void Microsoft2Grabber::DepthFrameArrived(IDepthFrameReference* pDepthFrameReference) {
-		IDepthFrame* pDepthFrame = NULL;
-		HRESULT hr = pDepthFrameReference->AcquireFrame(&pDepthFrame);
-		if(FAILED(hr))
-			return;
-		//cout << "got a depth frame" << endl;
-		INT64 nDepthTime = 0;
-		IFrameDescription* pDepthFrameDescription = NULL;
-		int nDepthWidth = 0;
-		int nDepthHeight = 0;
-		UINT nDepthBufferSize = 0;
-
-		// get depth frame data
-		hr = pDepthFrame->get_RelativeTime(&nDepthTime);
-
-		if (SUCCEEDED(hr)) {
-			hr = pDepthFrame->get_FrameDescription(&pDepthFrameDescription);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pDepthFrameDescription->get_Width(&nDepthWidth);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pDepthFrameDescription->get_Height(&nDepthHeight);
-		}
-		if (SUCCEEDED(hr)) {
-			//m_pDepthBuffer = new UINT16[cDepthWidth * cDepthHeight];
-			hr = pDepthFrame->AccessUnderlyingBuffer(&nDepthBufferSize, &m_pDepthBuffer);
-			//pDepthFrame->CopyFrameDataToArray(nDepthBufferSize,m_pDepthBuffer);
-			//WaitForSingleObject(hDepthMutex,INFINITE);
-			Mat tmp = Mat(m_depthSize, DEPTH_PIXEL_TYPE, m_pDepthBuffer, Mat::AUTO_STEP);
-			//boost::shared_ptr<MatDepth> depth_img((MatDepth*)(new Mat(cDepthHeight,cDepthWidth,DEPTH_PIXEL_TYPE)));
-			//total hack for now
-			//depth_img->operator=(*((MatDepth*)&(tmp.clone()))); //need to deep copy because of the call to SafeRelease(pDepthFrame) to prevent access violation
-			MatDepth depth_img = *((MatDepth*)&(tmp.clone()));
-			m_depthTime = nDepthTime;
-			if (depth_image_signal_->num_slots () > 0) {
-				//cout << "img signal num slot!" << endl;
-				depth_image_signal_->operator()(depth_img);
-			}
-			if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
-				rgb_sync_.add1 (depth_img, m_depthTime);
-			//ReleaseMutex(hDepthMutex);
-		}
-		SafeRelease(pDepthFrameDescription);
-		SafeRelease(pDepthFrame);
-	}
-
-	void Microsoft2Grabber::ColorFrameArrived(IColorFrameReference* pColorFrameReference) {
-		IColorFrame* pColorFrame = NULL;
-		HRESULT hr = pColorFrameReference->AcquireFrame(&pColorFrame);
-		if(FAILED(hr)) {
-			cout << "Couldn't acquire color frame" << endl;
-			return;
-		}
-		//cout << "got a color frame" << endl;
-		INT64 nColorTime = 0;
-		IFrameDescription* pColorFrameDescription = NULL;
-		int nColorWidth = 0;
-		int nColorHeight = 0;
-		ColorImageFormat imageFormat = ColorImageFormat_None;
-		UINT nColorBufferSize = 0;
-		RGBQUAD *pColorBuffer = NULL;
-
-		// get color frame data
-		hr = pColorFrame->get_RelativeTime(&nColorTime);
-		if (SUCCEEDED(hr)) {
-			hr = pColorFrame->get_FrameDescription(&pColorFrameDescription);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pColorFrameDescription->get_Width(&nColorWidth);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pColorFrameDescription->get_Height(&nColorHeight);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pColorFrame->get_RawColorImageFormat(&imageFormat);
-		}
-		if (SUCCEEDED(hr)) {
-			if (imageFormat == ColorImageFormat_Bgra) {
-				hr = pColorFrame->AccessRawUnderlyingBuffer(&nColorBufferSize, reinterpret_cast<BYTE**>(&pColorBuffer));
-			} else if (m_pColorRGBX) {
-				pColorBuffer = m_pColorRGBX;
-				nColorBufferSize = cColorWidth * cColorHeight * sizeof(RGBQUAD);
-				hr = pColorFrame->CopyConvertedFrameDataToArray(nColorBufferSize, reinterpret_cast<BYTE*>(pColorBuffer), ColorImageFormat_Bgra);
-			} else {
-				hr = E_FAIL;
-			}
-			if(SUCCEEDED(hr)) {
-				//WaitForSingleObject(hColorMutex,INFINITE);
-				//boost::shared_ptr<Mat> img(new Mat(cColorHeight,cColorWidth,COLOR_PIXEL_TYPE));
-				//cout << "creating the image" << endl;
-				Mat *img = new Mat(m_colorSize, COLOR_PIXEL_TYPE, pColorBuffer, Mat::AUTO_STEP);
-				m_rgbTime = nColorTime;
-				if (image_signal_->num_slots () > 0) {
-					//cout << "img signal num slot!" << endl;
-					image_signal_->operator()(img);
-				}
-				if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
-					rgb_sync_.add0 (img, m_rgbTime);
-				//ReleaseMutex(hColorMutex);
-			}
-		}
-		SafeRelease(pColorFrameDescription);
-		SafeRelease(pColorFrame);
-	}
-
 	void Microsoft2Grabber::BodyIndexFrameArrived(IBodyIndexFrameReference* pBodyIndexFrameReference) {
 		IBodyIndexFrame* pBodyIndexFrame = NULL;
 		HRESULT hr = pBodyIndexFrameReference->AcquireFrame(&pBodyIndexFrame);
@@ -396,225 +290,116 @@ namespace pcl {
 		}
 	}
 
-	void Microsoft2Grabber::GetNextFrame() {
-		if (!m_pMultiSourceFrameReader)
-		{
-			return;
-		}
-
-		IMultiSourceFrame* pMultiSourceFrame = NULL;
-		IDepthFrame* pDepthFrame = NULL;
-		IColorFrame* pColorFrame = NULL;
-		IBodyIndexFrame* pBodyIndexFrame = NULL;
-
-		HRESULT hr = m_pMultiSourceFrameReader->AcquireLatestFrame(&pMultiSourceFrame);
-
-		if (SUCCEEDED(hr))
-		{
-			IDepthFrameReference* pDepthFrameReference = NULL;
-
-			hr = pMultiSourceFrame->get_DepthFrameReference(&pDepthFrameReference);
-			if (SUCCEEDED(hr))
-			{
-				hr = pDepthFrameReference->AcquireFrame(&pDepthFrame);
-				if (FAILED(hr)) {
-					//cout << "fail on AcquireFrame" << endl;
-					SafeRelease(pDepthFrameReference);
-					return;
-				}
-			}
-
-			SafeRelease(pDepthFrameReference);
-		}
-
-		if (SUCCEEDED(hr))
-		{
-			IColorFrameReference* pColorFrameReference = NULL;
-
-			hr = pMultiSourceFrame->get_ColorFrameReference(&pColorFrameReference);
-			if (SUCCEEDED(hr))
-			{
-				hr = pColorFrameReference->AcquireFrame(&pColorFrame);
-			}
-
-			SafeRelease(pColorFrameReference);
-		}
-
-		if (SUCCEEDED(hr))
-		{
-			IBodyIndexFrameReference* pBodyIndexFrameReference = NULL;
-
-			hr = pMultiSourceFrame->get_BodyIndexFrameReference(&pBodyIndexFrameReference);
-			if (SUCCEEDED(hr))
-			{
-				hr = pBodyIndexFrameReference->AcquireFrame(&pBodyIndexFrame);
-			}
-
-			SafeRelease(pBodyIndexFrameReference);
-		}
-
-		if (SUCCEEDED(hr))
-		{
-			INT64 nDepthTime = 0;
-			IFrameDescription* pDepthFrameDescription = NULL;
-			int nDepthWidth = 0;
-			int nDepthHeight = 0;
-			UINT nDepthBufferSize = 0;
-
-			IFrameDescription* pColorFrameDescription = NULL;
-			int nColorWidth = 0;
-			int nColorHeight = 0;
-			ColorImageFormat imageFormat = ColorImageFormat_None;
-			UINT nColorBufferSize = 0;
-			RGBQUAD *pColorBuffer = NULL;
-
-			IFrameDescription* pBodyIndexFrameDescription = NULL;
-			int nBodyIndexWidth = 0;
-			int nBodyIndexHeight = 0;
-			UINT nBodyIndexBufferSize = 0;
-			BYTE *pBodyIndexBuffer = NULL;
-
-			// get depth frame data
-
-			hr = pDepthFrame->get_RelativeTime(&nDepthTime);
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pDepthFrame->get_FrameDescription(&pDepthFrameDescription);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pDepthFrameDescription->get_Width(&nDepthWidth);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pDepthFrameDescription->get_Height(&nDepthHeight);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				//m_pDepthBuffer = new UINT16[cDepthWidth * cDepthHeight];
-				hr = pDepthFrame->AccessUnderlyingBuffer(&nDepthBufferSize, &m_pDepthBuffer);
-				//pDepthFrame->CopyFrameDataToArray(nDepthBufferSize,m_pDepthBuffer);
-				//WaitForSingleObject(hDepthMutex,INFINITE);
-				Mat tmp = Mat(m_depthSize, DEPTH_PIXEL_TYPE, m_pDepthBuffer, Mat::AUTO_STEP);
-				//boost::shared_ptr<MatDepth> depth_img((MatDepth*)(new Mat(cDepthHeight,cDepthWidth,DEPTH_PIXEL_TYPE)));
-				//total hack for now
-				//depth_img->operator=(*((MatDepth*)&(tmp.clone()))); //need to deep copy because of the call to SafeRelease(pDepthFrame) to prevent access violation
-				MatDepth depth_img = *((MatDepth*)&(tmp.clone()));
-				m_depthTime = nDepthTime;
-				if (depth_image_signal_->num_slots () > 0) {
-					//cout << "img signal num slot!" << endl;
-					depth_image_signal_->operator()(depth_img);
-				}
-				if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
-					rgb_sync_.add1 (depth_img, m_depthTime);
-				//ReleaseMutex(hDepthMutex);
-			}
-
-			// get color frame data
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pColorFrame->get_FrameDescription(&pColorFrameDescription);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pColorFrameDescription->get_Width(&nColorWidth);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pColorFrameDescription->get_Height(&nColorHeight);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pColorFrame->get_RawColorImageFormat(&imageFormat);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				if (imageFormat == ColorImageFormat_Bgra)
-				{
-					hr = pColorFrame->AccessRawUnderlyingBuffer(&nColorBufferSize, reinterpret_cast<BYTE**>(&pColorBuffer));
-				}
-				else if (m_pColorRGBX)
-				{
-					pColorBuffer = m_pColorRGBX;
-					nColorBufferSize = cColorWidth * cColorHeight * sizeof(RGBQUAD);
-					hr = pColorFrame->CopyConvertedFrameDataToArray(nColorBufferSize, reinterpret_cast<BYTE*>(pColorBuffer), ColorImageFormat_Bgra);
-				}
-				else
-				{
-					hr = E_FAIL;
-				}
-				if(SUCCEEDED(hr)) {
-					//WaitForSingleObject(hColorMutex,INFINITE);
-					//boost::shared_ptr<Mat> img(new Mat(cColorHeight,cColorWidth,COLOR_PIXEL_TYPE));
-					//cout << "creating the image" << endl;
-					Mat *img = new Mat(m_colorSize, COLOR_PIXEL_TYPE, pColorBuffer, Mat::AUTO_STEP);
-					m_rgbTime = nDepthTime;
-					if (image_signal_->num_slots () > 0) {
-						//cout << "img signal num slot!" << endl;
-						image_signal_->operator()(img);
-					}
-					if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
-						rgb_sync_.add0 (img, m_rgbTime);
-					//ReleaseMutex(hColorMutex);
-				}
-			}
-
-			// get body index frame data
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pBodyIndexFrame->get_FrameDescription(&pBodyIndexFrameDescription);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pBodyIndexFrameDescription->get_Width(&nBodyIndexWidth);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pBodyIndexFrameDescription->get_Height(&nBodyIndexHeight);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pBodyIndexFrame->AccessUnderlyingBuffer(&nBodyIndexBufferSize, &pBodyIndexBuffer);            
-			}
-
-			SafeRelease(pDepthFrameDescription);
-			SafeRelease(pColorFrameDescription);
-			SafeRelease(pBodyIndexFrameDescription);
-		}
-
-		SafeRelease(pDepthFrame);
-		SafeRelease(pColorFrame);
-		SafeRelease(pBodyIndexFrame);
-		SafeRelease(pMultiSourceFrame);
-	}
-
 #pragma endregion
 
 	//Camera Functions
 #pragma region Camera
+		void Microsoft2Grabber::ColorFrameArrived(IColorFrameReference* pColorFrameReference) {
+		IColorFrame* pColorFrame = NULL;
+		HRESULT hr = pColorFrameReference->AcquireFrame(&pColorFrame);
+		if(FAILED(hr)) {
+			//cout << "Couldn't acquire color frame" << endl;
+			return;
+		}
+		//cout << "got a color frame" << endl;
+		INT64 nColorTime = 0;
+		IFrameDescription* pColorFrameDescription = NULL;
+		int nColorWidth = 0;
+		int nColorHeight = 0;
+		ColorImageFormat imageFormat = ColorImageFormat_None;
+		UINT nColorBufferSize = 0;
+		RGBQUAD *pColorBuffer = NULL;
 
+		// get color frame data
+		hr = pColorFrame->get_RelativeTime(&nColorTime);
+		if (SUCCEEDED(hr)) {
+			hr = pColorFrame->get_FrameDescription(&pColorFrameDescription);
+		}
+		if (SUCCEEDED(hr)) {
+			hr = pColorFrameDescription->get_Width(&nColorWidth);
+		}
+		if (SUCCEEDED(hr)) {
+			hr = pColorFrameDescription->get_Height(&nColorHeight);
+		}
+		if (SUCCEEDED(hr)) {
+			hr = pColorFrame->get_RawColorImageFormat(&imageFormat);
+		}
+		if (SUCCEEDED(hr)) {
+			if (imageFormat == ColorImageFormat_Bgra) {
+				hr = pColorFrame->AccessRawUnderlyingBuffer(&nColorBufferSize, reinterpret_cast<BYTE**>(&pColorBuffer));
+			} else if (m_pColorRGBX) {
+				pColorBuffer = m_pColorRGBX;
+				nColorBufferSize = cColorWidth * cColorHeight * sizeof(RGBQUAD);
+				hr = pColorFrame->CopyConvertedFrameDataToArray(nColorBufferSize, reinterpret_cast<BYTE*>(pColorBuffer), ColorImageFormat_Bgra);
+			} else {
+				hr = E_FAIL;
+			}
+			if(SUCCEEDED(hr)) {
+				//WaitForSingleObject(hColorMutex,INFINITE);
+				//cout << "creating the image" << endl;
+				Mat tmp = Mat(m_colorSize, COLOR_PIXEL_TYPE, pColorBuffer, Mat::AUTO_STEP);
+				boost::shared_ptr<Mat> img(new Mat());
+				*img = tmp.clone();
+				m_rgbTime = nColorTime;
+				if (image_signal_->num_slots () > 0) {
+					//cout << "img signal num slot!" << endl;
+					image_signal_->operator()(img);
+				}
+				if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
+					rgb_sync_.add0 (img, m_rgbTime);
+				//ReleaseMutex(hColorMutex);
+			}
+		}
+		SafeRelease(pColorFrameDescription);
+		SafeRelease(pColorFrame);
+	}
 #pragma endregion
 
 	//Depth Functions
 #pragma region Depth
+	void Microsoft2Grabber::DepthFrameArrived(IDepthFrameReference* pDepthFrameReference) {
+		IDepthFrame* pDepthFrame = NULL;
+		HRESULT hr = pDepthFrameReference->AcquireFrame(&pDepthFrame);
+		if(FAILED(hr))
+			return;
+		//cout << "got a depth frame" << endl;
+		INT64 nDepthTime = 0;
+		IFrameDescription* pDepthFrameDescription = NULL;
+		int nDepthWidth = 0;
+		int nDepthHeight = 0;
+		UINT nDepthBufferSize = 0;
 
+		// get depth frame data
+		hr = pDepthFrame->get_RelativeTime(&nDepthTime);
+		if (SUCCEEDED(hr)) {
+			hr = pDepthFrame->get_FrameDescription(&pDepthFrameDescription);
+		}
+		if (SUCCEEDED(hr)) {
+			hr = pDepthFrameDescription->get_Width(&nDepthWidth);
+		}
+		if (SUCCEEDED(hr)) {
+			hr = pDepthFrameDescription->get_Height(&nDepthHeight);
+		}
+		if (SUCCEEDED(hr)) {
+			hr = pDepthFrame->AccessUnderlyingBuffer(&nDepthBufferSize, &m_pDepthBuffer);
+			//WaitForSingleObject(hDepthMutex,INFINITE);
+			Mat tmp = Mat(m_depthSize, DEPTH_PIXEL_TYPE, m_pDepthBuffer, Mat::AUTO_STEP);
+			MatDepth depth_img = *((MatDepth*)&(tmp.clone()));
+			m_depthTime = nDepthTime;
+			if (depth_image_signal_->num_slots () > 0) {
+				depth_image_signal_->operator()(depth_img);
+			}
+			if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
+				rgb_sync_.add1 (depth_img, m_depthTime);
+			//ReleaseMutex(hDepthMutex);
+		}
+		SafeRelease(pDepthFrameDescription);
+		SafeRelease(pDepthFrame);
+	}
 #pragma endregion
 
 #pragma region Cloud
-	void Microsoft2Grabber::imageDepthImageCallback (const Mat *image,
+	void Microsoft2Grabber::imageDepthImageCallback (const boost::shared_ptr<Mat> &image,
 		const MatDepth &depth_image)
 	{
 		boost::shared_ptr<PointCloud<PointXYZRGBA>> cloud;
@@ -629,9 +414,12 @@ namespace pcl {
 		}
 	}
 
-	void Microsoft2Grabber::GetPointCloudFromData(const Mat *img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool useZeros, bool alignToColor, bool preregistered) const
+	void Microsoft2Grabber::GetPointCloudFromData(const boost::shared_ptr<Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool useZeros, bool alignToColor, bool preregistered) const
 	{
-		assert(!img->empty() && !depth.empty());
+		if(!img || img->empty() || depth.empty()) {
+			cout << "empty img or depth" << endl;
+			return;
+		}
 
 		UINT16 *pDepth = (UINT16*)depth.data;
 		int length = cDepthHeight * cDepthWidth;
@@ -679,9 +467,10 @@ namespace pcl {
 				++pCamera; ++pCloud; ++pColor;
 			}
 		}
+		img->release();
 	}
 
-	boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA>> Microsoft2Grabber::convertToXYZRGBAPointCloud (const cv::Mat *image,
+	boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA>> Microsoft2Grabber::convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image,
 		const MatDepth &depth_image) const {
 			boost::shared_ptr<PointCloud<PointXYZRGBA> > cloud (new PointCloud<PointXYZRGBA>);
 
