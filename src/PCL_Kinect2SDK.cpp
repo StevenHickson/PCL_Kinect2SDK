@@ -1,5 +1,6 @@
 #include <iostream>
 #include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/common/time.h>
@@ -25,7 +26,7 @@ using namespace cv;
 class SimpleMicrosoftViewer
 {
 public:
-	SimpleMicrosoftViewer () : viewer(new pcl::visualization::PCLVisualizer ("PCL Microsoft Viewer")), normals(new pcl::PointCloud<pcl::Normal>), sharedCloud(new pcl::PointCloud<pcl::PointXYZRGBA>), first(false), update(false) {}
+	SimpleMicrosoftViewer () : normals(new pcl::PointCloud<pcl::Normal>), sharedCloud(new pcl::PointCloud<pcl::PointXYZRGBA>), first(false), update(false) {}
 
 	void cloud_cb_ (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&data)
 	{
@@ -45,6 +46,12 @@ public:
 			update = true;
 			normalMutex.unlock();
 		}
+	}
+
+	void cloud_save_cb_ (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&data)
+	{
+		if(!data->empty())
+			clouds.push_back(data);
 	}
 
 	void image_cb_ (const boost::shared_ptr<Mat> &image) {
@@ -69,25 +76,19 @@ public:
 		// create a new grabber for OpenNI devices
 		pcl::Grabber* my_interface = new pcl::Microsoft2Grabber();
 
-		// make callback function from member function
-		boost::function<void (const boost::shared_ptr<Mat>&)> f2 =
-			boost::bind (&SimpleMicrosoftViewer::image_cb_, this, _1);
-		boost::function<void (const MatDepth&)> f3 =
-			boost::bind (&SimpleMicrosoftViewer::depth_cb_, this, _1);
-
+		boost::function<void (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&)> f =
+			boost::bind (&SimpleMicrosoftViewer::cloud_save_cb_, this, _1);
+		my_interface->registerCallback (f);
 		my_interface->start ();
 		boost::this_thread::sleep(boost::posix_time::milliseconds(30));
 		int num = 0;
 		while(1) {
 			//cout << "buffer empty" << endl;
-			if(!images.empty() && !depths.empty()) {
-				stringstream buffer, buffer2;
-				buffer << num << "_color.png";
-				imwrite(buffer.str(),images.front());
-				buffer2 << num << "_depth.png";
-				imwrite(buffer2.str(),depths.front());
-				images.pop_front();
-				depths.pop_front();
+			if(!clouds.empty()) {
+				stringstream buffer;
+				buffer << num << ".pcd";
+				pcl::io::savePCDFileBinary<PointXYZRGBA>(buffer.str(),*clouds.front());
+				clouds.pop_front();
 				num++;
 				cout << "Wrote images" <<endl;
 			}
@@ -153,8 +154,7 @@ public:
 		viewer->spinOnce(100);*/
 	}
 
-	deque<Mat> images;
-	deque<MatDepth> depths;
+	deque<const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> > > clouds;
 	boost::shared_ptr<pcl::PointCloud<pcl::Normal>> normals;
 	boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA>> sharedCloud;
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer;
@@ -170,7 +170,7 @@ int
 	PointCloud<PointXYZRGB> cloud;
 	try {
 		SimpleMicrosoftViewer v;
-		v.run();
+		v.savedata();
 	} catch (pcl::PCLException e) {
 		cout << e.detailedMessage() << endl;
 	} catch (std::exception &e) {
