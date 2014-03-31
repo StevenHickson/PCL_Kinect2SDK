@@ -160,6 +160,7 @@ namespace pcl
 #define COLOR_PIXEL_TYPE CV_8UC4
 #define DEPTH_PIXEL_TYPE CV_16UC1
 
+
 		HANDLE hStopEvent, hKinectThread, hDepthMutex, hColorMutex;
 		WAITABLE_HANDLE hFrameEvent;
 		bool m_depthUpdated, m_colorUpdated, m_infraredUpdated, m_skeletonUpdated;
