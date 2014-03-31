@@ -26,7 +26,7 @@ using namespace cv;
 class SimpleMicrosoftViewer
 {
 public:
-	SimpleMicrosoftViewer () : normals(new pcl::PointCloud<pcl::Normal>), sharedCloud(new pcl::PointCloud<pcl::PointXYZRGBA>), first(false), update(false) {}
+	SimpleMicrosoftViewer () : viewer(new pcl::visualization::PCLVisualizer("cloud viewer")), normals(new pcl::PointCloud<pcl::Normal>), sharedCloud(new pcl::PointCloud<pcl::PointXYZRGBA>), first(false), update(false) {}
 
 	void cloud_cb_ (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&data)
 	{
@@ -85,9 +85,9 @@ public:
 		while(1) {
 			//cout << "buffer empty" << endl;
 			if(!clouds.empty()) {
-				stringstream buffer;
-				buffer << num << ".pcd";
-				pcl::io::savePCDFileBinary<PointXYZRGBA>(buffer.str(),*clouds.front());
+				char buffer[100];
+				sprintf(buffer,"%05d.pcd",num);
+				pcl::io::savePCDFileBinary<PointXYZRGBA>(buffer,*clouds.front());
 				clouds.pop_front();
 				num++;
 				cout << "Wrote images" <<endl;
@@ -170,7 +170,7 @@ int
 	PointCloud<PointXYZRGB> cloud;
 	try {
 		SimpleMicrosoftViewer v;
-		v.savedata();
+		v.run();
 	} catch (pcl::PCLException e) {
 		cout << e.detailedMessage() << endl;
 	} catch (std::exception &e) {

@@ -164,6 +164,7 @@ namespace pcl
 		WAITABLE_HANDLE hFrameEvent;
 		bool m_depthUpdated, m_colorUpdated, m_infraredUpdated, m_skeletonUpdated;
 		LONGLONG m_rgbTime, m_depthTime, m_infraredTime;
+		INT64 timestep;
 		//boost::mutex m_depthMutex, m_colorMutex, m_infraredMutex;
 
 		void Release();
