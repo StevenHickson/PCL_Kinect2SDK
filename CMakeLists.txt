@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 
+project(PCL_Kinect2SDK)
+
 SET_PROPERTY(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
 
 IF(WIN32 OR win64)
@@ -11,7 +13,7 @@ ENDIF()
 find_package(PCL 1.7 REQUIRED)
 find_package( OpenCV REQUIRED )
 
-project(PCL_Kinect2SDK)
+
 
 add_subdirectory(src)
 
