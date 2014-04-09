@@ -17,19 +17,18 @@ find_package( OpenCV REQUIRED )
 
 add_subdirectory(src)
 
-set(KinectSDK_INCLUDE "default value" CACHE FILEPATH "Include directories for Kinect2 SDK")
-set(KinectSDK_LIB "default value" CACHE FILEPATH "Include directories for Kinect2 SDK")
+set(KinectSDK_INCLUDE "default value" CACHE PATH "Include directories for Kinect2 SDK")
+set(KinectSDK_LIB "default value" CACHE PATH "Include directories for Kinect2 SDK")
 
 include_directories(C:/opencv/build)
 include_directories(${PCL_INCLUDE_DIRS})
-include_directories(C:/blepo/external64/Microsoft/Kinect)
 include_directories(${PCL_Kinect2SDK_SOURCE_DIR}/include)
 include_directories(${KinectSDK_INCLUDE})
 
 
 link_directories(${PCL_LIBRARY_DIRS})
 link_directories(${KinectSDK_LIB})
-link_directories(C:/blepo/external64/Microsoft/Kinect)
+
 
 add_definitions(${PCL_DEFINITIONS})
 
