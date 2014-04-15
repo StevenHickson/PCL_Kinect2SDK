@@ -28,6 +28,28 @@ class SimpleMicrosoftViewer
 public:
 	SimpleMicrosoftViewer () : viewer(new pcl::visualization::PCLVisualizer("cloud viewer")), normals(new pcl::PointCloud<pcl::Normal>), sharedCloud(new pcl::PointCloud<pcl::PointXYZRGBA>), first(false), update(false) {}
 
+	void GetMatFromCloud(const PointCloud<PointXYZRGBA> &cloud, Mat &img) {
+		img = Mat(cloud.height,cloud.width,CV_8UC3);
+		Mat_<Vec3b>::iterator pI = img.begin<Vec3b>();
+		PointCloud<PointXYZRGBA>::const_iterator pC = cloud.begin();
+		while(pC != cloud.end()) {
+			(*pI)[0] = pC->b;
+			(*pI)[1] = pC->g;
+			(*pI)[2] = pC->r;
+			++pI; ++pC;
+		}
+	}
+
+	void GetDepthFromCloud(const PointCloud<PointXYZRGBA> &cloud, Mat &depth) {
+		depth = Mat::zeros(cloud.height,cloud.width,CV_16UC1);
+		Mat_<unsigned short>::iterator pI = depth.begin<unsigned short>();
+		PointCloud<PointXYZRGBA>::const_iterator pC = cloud.begin();
+		while(pC != cloud.end()) {
+			*pI = 1000*pC->z;
+			++pI; ++pC;
+		}
+	}
+
 	void cloud_cb_ (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&data)
 	{
 		// estimate normals
@@ -37,6 +59,9 @@ public:
 		if(!data->empty()) {
 			normalMutex.lock();
 			copyPointCloud(*data,*sharedCloud);
+			/*Mat tmp;
+			GetDepthFromCloud(*sharedCloud,tmp);
+			imshow("image",tmp);*/
 			pcl::IntegralImageNormalEstimation<pcl::PointXYZRGBA, pcl::Normal> ne;
 			ne.setNormalEstimationMethod (ne.AVERAGE_3D_GRADIENT);
 			ne.setMaxDepthChangeFactor(0.02f);
@@ -45,6 +70,7 @@ public:
 			ne.compute(*normals);
 			update = true;
 			normalMutex.unlock();
+			waitKey(1);
 		}
 	}
 
@@ -98,7 +124,7 @@ public:
 	void run ()
 	{
 		// create a new grabber for OpenNI devices
-		pcl::Grabber* my_interface = new pcl::Microsoft2Grabber();
+		pcl::Microsoft2Grabber* my_interface = new pcl::Microsoft2Grabber();
 
 		// make callback function from member function
 		boost::function<void (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&)> f =
@@ -113,6 +139,7 @@ public:
 		//my_interface->registerCallback (f3);
 
 		//viewer.setBackgroundColor(0.0, 0.0, 0.5);
+		//my_interface->SetLargeCloud();
 		my_interface->start ();
 		Sleep(30);
 		//while(1)

@@ -40,7 +40,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 #include <vector>
 #include <algorithm>
 #include <objbase.h>
-#include <Kinect.h>
+#include "Kinect.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -81,6 +81,7 @@ namespace pcl
 		//define callback signature typedefs
 		typedef void (sig_cb_microsoft_image) (const boost::shared_ptr<cv::Mat> &);
 		typedef void (sig_cb_microsoft_depth_image) (const MatDepth &);
+		typedef void (sig_cb_microsoft_image_depth_image) (const boost::shared_ptr<cv::Mat> &, const MatDepth &, float);
 		typedef void (sig_cb_microsoft_point_cloud_rgba) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&);
 		typedef void (sig_cb_microsoft_all_data) (const boost::shared_ptr<const KinectData> &);
 		/*typedef void (sig_cb_microsoft_ir_image) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZI> >&);
@@ -123,14 +124,23 @@ namespace pcl
 		ICoordinateMapper*      m_pCoordinateMapper;
 		bool CameraSettingsSupported;
 
-		void GetPointCloudFromData(const boost::shared_ptr<cv::Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool useZeros, bool alignToColor, bool preregistered) const;
+		void GetPointCloudFromData(const boost::shared_ptr<cv::Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool alignToColor, bool preregistered) const;
 
 		//These should not be called except within the thread by the KinectCapture class process manager
 		void ProcessThreadInternal();
 
+		void SetLargeCloud() {
+			m_largeCloud = true;
+		}
+
+		void SetNormalCloud() {
+			m_largeCloud = false;
+		}
+
 	protected:
 		boost::signals2::signal<sig_cb_microsoft_image>* image_signal_;
 		boost::signals2::signal<sig_cb_microsoft_depth_image>* depth_image_signal_;
+		boost::signals2::signal<sig_cb_microsoft_image_depth_image>* image_depth_image_signal_;
 		boost::signals2::signal<sig_cb_microsoft_point_cloud_rgba>* point_cloud_rgba_signal_;
 		boost::signals2::signal<sig_cb_microsoft_all_data>* all_data_signal_;
 		/*boost::signals2::signal<sig_cb_microsoft_ir_image>* ir_image_signal_;
@@ -160,7 +170,7 @@ namespace pcl
 #define COLOR_PIXEL_TYPE CV_8UC4
 #define DEPTH_PIXEL_TYPE CV_16UC1
 
-
+		bool m_largeCloud;
 		HANDLE hStopEvent, hKinectThread, hDepthMutex, hColorMutex;
 		WAITABLE_HANDLE hFrameEvent;
 		bool m_depthUpdated, m_colorUpdated, m_infraredUpdated, m_skeletonUpdated;

@@ -52,6 +52,7 @@ namespace pcl {
 		m_person = m_depthStarted = m_videoStarted = m_audioStarted = m_infraredStarted = false;
 		hStopEvent = NULL;
 		hKinectThread = NULL;
+		m_largeCloud = false;
 
 		hr = GetDefaultKinectSensor(&m_pKinectSensor);
 		if (FAILED(hr)) {
@@ -80,11 +81,12 @@ namespace pcl {
 		m_depthSize = Size(cDepthWidth, cDepthHeight);
 		m_pColorRGBX = new RGBQUAD[cColorWidth * cColorHeight];
 		m_pColorCoordinates = new ColorSpacePoint[cDepthHeight * cDepthWidth];
-		m_pCameraSpacePoints = new CameraSpacePoint[cDepthHeight * cDepthWidth];
+		m_pCameraSpacePoints = new CameraSpacePoint[cColorHeight * cColorWidth];
 
 		// create callback signals
 		image_signal_             = createSignal<sig_cb_microsoft_image> ();
 		depth_image_signal_    = createSignal<sig_cb_microsoft_depth_image> ();
+		image_depth_image_signal_    = createSignal<sig_cb_microsoft_image_depth_image> ();
 		point_cloud_rgba_signal_  = createSignal<sig_cb_microsoft_point_cloud_rgba> ();
 		all_data_signal_  = createSignal<sig_cb_microsoft_all_data> ();
 		/*ir_image_signal_       = createSignal<sig_cb_microsoft_ir_image> ();
@@ -294,7 +296,7 @@ namespace pcl {
 
 	//Camera Functions
 #pragma region Camera
-		void Microsoft2Grabber::ColorFrameArrived(IColorFrameReference* pColorFrameReference) {
+	void Microsoft2Grabber::ColorFrameArrived(IColorFrameReference* pColorFrameReference) {
 		IColorFrame* pColorFrame = NULL;
 		HRESULT hr = pColorFrameReference->AcquireFrame(&pColorFrame);
 		if(FAILED(hr)) {
@@ -345,7 +347,7 @@ namespace pcl {
 					//cout << "img signal num slot!" << endl;
 					image_signal_->operator()(img);
 				}
-				if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
+				if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0 || image_depth_image_signal_->num_slots() > 0)
 					rgb_sync_.add0 (img, m_rgbTime);
 				//ReleaseMutex(hColorMutex);
 			}
@@ -389,7 +391,7 @@ namespace pcl {
 			if (depth_image_signal_->num_slots () > 0) {
 				depth_image_signal_->operator()(depth_img);
 			}
-			if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0)
+			if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0 || image_depth_image_signal_->num_slots() > 0)
 				rgb_sync_.add1 (depth_img, m_depthTime);
 			//ReleaseMutex(hDepthMutex);
 		}
@@ -412,9 +414,14 @@ namespace pcl {
 			//boost::shared_ptr<KinectData> data (new KinectData(image,depth_image,*cloud));
 			//all_data_signal_->operator()(data);
 		}
+
+		if(image_depth_image_signal_->num_slots() > 0) {
+			float constant = 1.0f;
+			image_depth_image_signal_->operator()(image,depth_image,constant);
+		}
 	}
 
-	void Microsoft2Grabber::GetPointCloudFromData(const boost::shared_ptr<Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool useZeros, bool alignToColor, bool preregistered) const
+	void Microsoft2Grabber::GetPointCloudFromData(const boost::shared_ptr<Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool alignToColor, bool preregistered) const
 	{
 		if(!img || img->empty() || depth.empty()) {
 			cout << "empty img or depth" << endl;
@@ -422,24 +429,34 @@ namespace pcl {
 		}
 
 		UINT16 *pDepth = (UINT16*)depth.data;
-		int length = cDepthHeight * cDepthWidth;
-		HRESULT hr = m_pCoordinateMapper->MapDepthFrameToCameraSpace(length,pDepth,length,m_pCameraSpacePoints);
-		if(FAILED(hr))
-			throw exception("Couldn't map to camera!");
-		hr = m_pCoordinateMapper->MapCameraPointsToColorSpace(length,m_pCameraSpacePoints,length,m_pColorCoordinates);
-		if(FAILED(hr))
-			throw exception("Couldn't map color!");
+		int length = cDepthHeight * cDepthWidth, length2;
+		HRESULT hr;
+		if(alignToColor) {
+			length2 = cColorHeight * cColorWidth;
+			hr = m_pCoordinateMapper->MapColorFrameToCameraSpace(length,pDepth,length2,m_pCameraSpacePoints);
+			if(FAILED(hr))
+				throw exception("Couldn't map to camera!");
+		} else {
+			hr = m_pCoordinateMapper->MapDepthFrameToCameraSpace(length,pDepth,length,m_pCameraSpacePoints);
+			if(FAILED(hr))
+				throw exception("Couldn't map to camera!");
+			hr = m_pCoordinateMapper->MapCameraPointsToColorSpace(length,m_pCameraSpacePoints,length,m_pColorCoordinates);
+			if(FAILED(hr))
+				throw exception("Couldn't map color!");
+		}
 
 		PointCloud<PointXYZRGBA>::iterator pCloud = cloud->begin();
 		ColorSpacePoint *pColor = m_pColorCoordinates;
 		CameraSpacePoint *pCamera = m_pCameraSpacePoints;
 		float bad_point = std::numeric_limits<float>::quiet_NaN ();
 		int x,y, safeWidth = cColorWidth - 1, safeHeight = cColorHeight - 1;
-		for(int j = 0; j < cDepthHeight; j++) {
-			for(int i = 0; i < cDepthWidth; i++) {
+		int width = alignToColor ? cColorWidth : cDepthWidth;
+		int height = alignToColor ? cColorHeight : cDepthHeight;
+		for(int j = 0; j < height; j++) {
+			for(int i = 0; i < width; i++) {
 				PointXYZRGBA loc;
 				Vec4b color;
-				if(!preregistered) {
+				if(!preregistered && !alignToColor) {
 					x = Clamp<int>(int(pColor->X),0,safeWidth);
 					y = Clamp<int>(int(pColor->Y),0,safeHeight);
 					//int index = y * cColorHeight + x;
@@ -458,12 +475,7 @@ namespace pcl {
 					loc.z = pCamera->Z;
 				}
 				//cout << "Iter: " << i << ", " << j << endl;
-				if(!preregistered && alignToColor) {
-					(*cloud)(x,y) = loc;
-					//for weird resolution differences
-				} else {
-					*pCloud = loc;
-				}
+				*pCloud = loc;
 				++pCamera; ++pCloud; ++pColor;
 			}
 		}
@@ -475,11 +487,11 @@ namespace pcl {
 			boost::shared_ptr<PointCloud<PointXYZRGBA> > cloud (new PointCloud<PointXYZRGBA>);
 
 			cloud->header.frame_id =  "/microsoft_rgb_optical_frame";
-			cloud->height = cDepthHeight;
-			cloud->width = cDepthWidth;
+			cloud->height = m_largeCloud ? cColorHeight : cDepthHeight;
+			cloud->width = m_largeCloud ? cColorWidth : cDepthWidth;
 			cloud->is_dense = false;
 			cloud->points.resize (cloud->height * cloud->width);
-			GetPointCloudFromData(image,depth_image,cloud,true,false,false);
+			GetPointCloudFromData(image,depth_image,cloud,m_largeCloud,false);
 			cloud->sensor_origin_.setZero ();
 			cloud->sensor_orientation_.w () = 1.0;
 			cloud->sensor_orientation_.x () = 0.0;
