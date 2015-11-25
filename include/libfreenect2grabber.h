@@ -17,16 +17,18 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 
 */
 //#pragma once
-#include <pcl/pcl_config.h>
+
 
 //Irgendwas Definedß? im Build?
 //#ifndef __PCL_IO_Libfreenect_GRABBER__
 //#define __PCL_IO_Libfreenect_GRABBER__
-
+#include <pcl/pcl_config.h>
+#include <a.out.h>
 #include <pcl/io/eigen.h>
 #include <pcl/io/boost.h>
 #include <pcl/io/grabber.h>
 #include <deque>
+
 #include <pcl/common/synchronizer.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -34,6 +36,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 #include <pcl/console/print.h>
 #include <pcl/exceptions.h>
 #include <iostream>
+#include <signal.h>
 #include <libfreenect2/libfreenect2.hpp>
 #include <libfreenect2/frame_listener_impl.h>
 #include <libfreenect2/packet_pipeline.h>
@@ -41,11 +44,12 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <opencv2/opencv.hpp>
-#include <signal.h>
+
 #include <string>
 #include <iostream>
 #include <Eigen/Core>
 #include "Kinect_helper.h"
+#include <pthread.h>
 
 /*
 #include <pcl/io/eigen.h>
@@ -71,29 +75,65 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 #include <opencv2/opencv.hpp>
 */
 
+
 namespace pcl
 {
 	struct PointXYZ;
 	struct PointXYZRGB;
 	struct PointXYZRGBA;
 	struct PointXYZI;
-	template <typename T> class PointCloud;
-	class MatDepth : public cv::Mat { }; //I have to use this to get around the assuming code in registerCallback in grabber.h
+
+/*
 	class KinectData {
 	public:
-		KinectData() { };
-		KinectData(const cv::Mat &image_, const MatDepth &depth_, const PointCloud<PointXYZRGBA> &cloud_) : image(image_), depth(depth_), cloud(cloud_) { };
+	//	KinectData() { };
+		KinectData(	const libfreenect2::Frame &image_, const	libfreenect2::Frame &depth_, const PointCloud<PointXYZRGBA> &cloud_)
+		{
+ 			image = image_;
+ 			depth = depth_;
+			cloud = cloud_;
+		};
+		cv::Mat getColor(){
+			libfreenect2::Frame * rgb = &image;
+			cv::Mat tmp(rgb->height, rgb->width, CV_8UC4, rgb->data);
+			cv::Mat r = tmp.clone();
+			return std::move(r);
+		}
+
+		cv::Mat getDepth(){
+			libfreenect2::Frame * depth = &depth;
+			cv::Mat tmp(depth->height, depth->width, CV_8UC4, depth->data);
+			cv::Mat r = tmp.clone();
+			listener_.release(frames_);
+			return std::move(r);
+		}
+
+		std::pair<cv::Mat, cv::Mat> getDepthRgb(){
+			libfreenect2::Frame * depth = &depth;
+			libfreenect2::Frame * rgb = &image;
+			registration_->apply(rgb, depth, &undistorted_, &registered_);
+			cv::Mat tmp_depth(undistorted_.height, undistorted_.width, CV_8UC4, undistorted_.data);
+			cv::Mat tmp_color(registered_.height, registered_.width, CV_8UC4, registered_.data);
+			cv::Mat r = tmp_color.clone();
+			cv::Mat d = tmp_depth.clone();
+			return std::move(std::pair<cv::Mat, cv::Mat>(r,d));
+		}
 
 		pcl::PointCloud<pcl::PointXYZRGBA> cloud;
-		cv::Mat image;
-		MatDepth depth;
+		libfreenect2::Frame  image;
+		libfreenect2::Frame  depth;
 
-	};
+	};*/
 
 	/** \brief Grabber for OpenNI devices (i.e., Primesense PSDK, Microsoft Kinect, Asus XTion Pro/Live)
 	* \author Nico Blodow <blodow@cs.tum.edu>, Suat Gedikli <gedikli@willowgarage.com>
 	* \ingroup io
 	*/
+
+
+	template <typename T> class PointCloud;
+	class MatDepth : public cv::Mat { }; //I have to use this to get around the assuming code in registerCallback in grabber.h
+
 	class PCL_EXPORTS Libfreenect2Grabber : public Grabber
 	{
 	public:
@@ -114,15 +154,15 @@ namespace pcl
 		/*std::pair<cv::Mat, cv::Mat> getDepthRgb()*/
 		typedef void (sig_cb_libfreenect_image_depth_image) (const boost::shared_ptr<cv::Mat> &, const MatDepth &, float);
 
-		typedef void (sig_cb_libfreenect_point_cloud_rgba) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGBA> >&);
+		typedef void (sig_cb_libfreenect_point_cloud_rgba) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGB>> &);
 
-		typedef void (sig_cb_libfreenect_all_data) (const boost::shared_ptr<const KinectData> &);
+	//	typedef void (sig_cb_libfreenect_all_data) (const boost::shared_ptr<const KinectData> &);
 		/*typedef void (sig_cb_microsoft_ir_image) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZI> >&);
 		typedef void (sig_cb_microsoft_point_cloud) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZ> >&);
 		typedef void (sig_cb_microsoft_point_cloud_rgb) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZRGB> >&);
 		typedef void (sig_cb_microsoft_point_cloud_i) (const boost::shared_ptr<const pcl::PointCloud<pcl::PointXYZI> >&);*/
 
-		Libfreenect2Grabber (const int instance = 0);
+		Libfreenect2Grabber ();
 		//const Mode& depth_mode = OpenNI_Default_Mode,
 		//const Mode& image_mode = OpenNI_Default_Mode);
 
@@ -160,29 +200,32 @@ namespace pcl
 		//ICoordinateMapper*      m_pCoordinateMapper;
 		bool CameraSettingsSupported;
 
-		void GetPointCloudFromData(const boost::shared_ptr<cv::Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool alignToColor, bool preregistered) const;
+//	void GetPointCloudFromData(const boost::shared_ptr<cv::Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool alignToColor, bool preregistered) const;
 
 		//These should not be called except within the thread by the KinectCapture class process manager
 		void ProcessThreadInternal();
 
 		void SetLargeCloud() {
-			m_largeCloud = true;
+			//m_largeCloud = true;
 		}
 
 		void SetNormalCloud() {
-			m_largeCloud = false;
+		//m_largeCloud = false;
 		}
  private:
 	 void prepareMake3D(const libfreenect2::Freenect2Device::IrCameraParams & depth_p);
-	 pcl::PointCloud<pcl::PointXYZRGB>::Ptr getCloud();
-	 cv::Mat Libfreenect2Grabber::getColor();
-	 cv::Mat Libfreenect2Grabber::getDepth();
-	 std::pair<cv::Mat, cv::Mat> Libfreenect2Grabber::getDepthRgb();
+	 cv::Mat getColor(libfreenect2::Frame * colorFrameRef);
+	 cv::Mat getDepth(libfreenect2::Frame * depthFrameRef);
+
+	 std::pair<cv::Mat, cv::Mat> getDepthRgb(libfreenect2::Frame * colorFrameRef, libfreenect2::Frame *depthFrameRef);
 
 	protected:
-		libfreenect2::Freenect2 freenect2_;
+        void getCloud(const boost::shared_ptr<cv::Mat>&, const pcl::MatDepth&, boost::shared_ptr<PointCloud<PointXYZRGB>> &cloud) const;
 
+		libfreenect2::Freenect2 freenect2_;
 		libfreenect2::PacketPipeline * pipeline_ = NULL;
+		libfreenect2::Frame activDepthFrame;
+		libfreenect2::Frame activImageFrame;
 
 		libfreenect2::FrameMap frames_;
 		libfreenect2::Frame undistorted_/*DepthFrame*/, registered_/*DepthFrame?*/, big_mat_ /*ColorFrame*/;
@@ -196,13 +239,13 @@ namespace pcl
 		boost::signals2::signal<sig_cb_libfreenect_depth_image>* depth_image_signal_;
 		boost::signals2::signal<sig_cb_libfreenect_image_depth_image>* image_depth_image_signal_;
 		boost::signals2::signal<sig_cb_libfreenect_point_cloud_rgba>* point_cloud_rgba_signal_;
-		boost::signals2::signal<sig_cb_libfreenect_all_data>* all_data_signal_;
+	//	boost::signals2::signal<sig_cb_libfreenect_all_data>* all_data_signal_;
 		/*boost::signals2::signal<sig_cb_microsoft_ir_image>* ir_image_signal_;
 		boost::signals2::signal<sig_cb_microsoft_point_cloud>* point_cloud_signal_;
 		boost::signals2::signal<sig_cb_microsoft_point_cloud_i>* point_cloud_i_signal_;
-		boost::signals2::signal<sig_cb_microsoft_point_cloud_rgb>* point_cloud_rgb_signal_;
+		boost::signals2::signal<sig_cb_microsoft_point_cloud_rgob>* point_cloud_rgb_signal_;
 		*/
-		Synchronizer<boost::shared_ptr<cv::Mat>, MatDepth > rgb_sync_;
+		Synchronizer<boost::shared_ptr<cv::Mat>, MatDepth> rgb_sync_;
 
 		bool m_depthStarted, m_videoStarted, m_audioStarted, m_infraredStarted, m_person, m_preregistered;
 
@@ -218,42 +261,44 @@ namespace pcl
 		libfreenect2::SyncMultiFrameListener listener_;
 
 
-		static const int        cColorWidth  = 1920;
-		static const int        cColorHeight = 1080;
-		static const int        cDepthWidth  = 512;
-		static const int        cDepthHeight = 424;
-		cv::Size m_colorSize, m_depthSize;
-		RGBQUAD* m_pColorRGBX;
-		UINT16 *m_pDepthBuffer;
+	//	static const int        cColorWidth  = 1920;
+		//	static const int        cColorHeight = 1080;
+	//		static const int        cDepthWidth  = 512;
+	//		static const int        cDepthHeight = 424;
+	//		cv::Size m_colorSize, m_depthSize;
+	//		RGBQUAD* m_pColorRGBX;
+	//		UINT16 *m_pDepthBuffer;
 		//TODO WAS THAT?
-		ColorSpacePoint *m_pColorCoordinates;
-		CameraSpacePoint *m_pCameraSpacePoints;
-		cv::Mat m_colorImage, m_depthImage;
+		//	ColorSpacePoint *m_pColorCoordinates;
+	//		CameraSpacePoint *m_pCameraSpacePoints;
+	//		cv::Mat m_colorImage, m_depthImage;
 #define COLOR_PIXEL_TYPE CV_8UC4
 #define DEPTH_PIXEL_TYPE CV_16UC1
 // BRAUCH ICH DAS?
-		bool m_largeCloud;
-		HANDLE hStopEvent, hKinectThread, hDepthMutex, hColorMutex;
-		WAITABLE_HANDLE hFrameEvent;
+	//		bool m_largeCloud;
+
+        pthread_t pKinectThread;
+
+	//	HANDLE hStopEvent, hKinectThread, hDepthMutex, hColorMutex;
+	/*	WAITABLE_HANDLE hFrameEvent;
 		bool m_depthUpdated, m_colorUpdated, m_infraredUpdated, m_skeletonUpdated;
 		typedef long LONGLONG;
 		typedef int INT64;
 		LONGLONG m_rgbTime, m_depthTime, m_infraredTime;
 		INT64 timestep;
-
+*/
 		//boost::mutex m_depthMutex, m_colorMutex, m_infraredMutex;
 
 		void Release();
 		void GetNextFrame();
-		void FrameArrived(IMultiSourceFrameArrivedEventArgs *pArgs);
-		void DepthFrameArrived(IDepthFrameReference* pDepthFrameReference);
-		void ColorFrameArrived(IColorFrameReference* pColorFrameReference);
-		void BodyIndexFrameArrived(IBodyIndexFrameReference* pBodyIndexFrameReference);
+		void FrameArrived();
+		void DepthFrameArrived(libfreenect2::Frame * depthFrameRef);
+		void ColorFrameArrived(libfreenect2::Frame * colorFrameRef);
+		//void BodyIndexFrameArrived(IBodyIndexFrameReference* pBodyIndexFrameReference);
 		bool GetCameraSettings();
 
-		void imageDepthImageCallback(const boost::shared_ptr<cv::Mat> &image, const MatDepth &depth_image);
-		boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA> > convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image,
-			const MatDepth &depth_image) const;
+		void imageDepthImageCallback(const boost::shared_ptr<cv::Mat> &image,const MatDepth &depth_image);
+		boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB>> convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image, const MatDepth &depth_image) const;
 		/** \brief Convert a Depth + RGB image pair to a pcl::PointCloud<PointT>
 		* \param[in] image the RGB image to convert
 		* \param[in] depth_image the depth image to convert

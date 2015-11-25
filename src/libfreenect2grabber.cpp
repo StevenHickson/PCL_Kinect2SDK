@@ -25,71 +25,34 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 
 using namespace std;
 using namespace cv;
-y<
+
 // Safe release for interfaces
 template<class Interface>
 inline void SafeRelease(Interface *& pInterfaceToRelease)
 {
 	if (pInterfaceToRelease != NULL)
+
 	{
-		pInterfaceToRelease->Release();
+        delete[] pInterfaceToRelease;
 		pInterfaceToRelease = NULL;
 	}
 }
 
-//DO I NEED THIS? YES START PTHREAD IN 
-DWORD ProcessThread(LPVOID pParam) {
-	pcl:: *p = (pcl::Libfreenect2Grabber*) pParam;
+//DO I NEED THIS? YES START PTHREAD IN LINUX
+static void* ProcessThread(void* pParam) {
+	pcl::Libfreenect2Grabber *p = (pcl::Libfreenect2Grabber*) pParam;
 	p->ProcessThreadInternal();
-
-	return 0;
 }
 
 template <typename T> inline T Clamp(T a, T minn, T maxx)
 { return (a < minn) ? minn : ( (a > maxx) ? maxx : a ); }
 
+
+
+
 namespace pcl {
-	Libfreenect2Grabber::Libfreenect2Grabber(const int instance) {
+	Libfreenect2Grabber::Libfreenect2Grabber() : activImageFrame(1920, 1082, 4),activDepthFrame(512, 424, 4), undistorted_(512, 424, 4), registered_(512, 424, 4), big_mat_(1920, 1082, 4), listener_(libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth){
 
-
-/*		HRESULT hr;
-		int num = 0;
-		m_person = m_depthStarted = m_videoStarted = m_audioStarted = m_infraredStarted = false;
-		hStopEvent = NULL;
-		hKinectThread = NULL;
-		m_largeCloud = false;
-
-		hr = GetDefaultKinectSensor(&m_pKinectSensor);
-
-
-		if (FAILED(hr)) {
-			throw exception("Error could not get default kinect sensor");
-		}
-
-		if (m_pKinectSensor) {
-
-			hr = m_pKinectSensor->get_CoordinateMapper(&m_pCoordinateMapper);
-			hr = m_pKinectSensor->Open();
-			if (SUCCEEDED(hr)) {
-				hr = m_pKinectSensor->OpenMultiSourceFrameReader(
-					FrameSourceTypes::FrameSourceTypes_Depth | FrameSourceTypes::FrameSourceTypes_Color | FrameSourceTypes::FrameSourceTypes_BodyIndex,
-					&m_pMultiSourceFrameReader);
-				if (SUCCEEDED(hr))
-				{
-					m_videoStarted = m_depthStarted = true;
-				} else
-					throw exception("Failed to Open Kinect Multisource Stream");
-			}
-		}
-*/
-
-		undistorted_ = libfreenect2::Frame(512, 424, 4);
-		/* Params Image & Depth */
-		registered_ = libfreenect2::Frame(512, 424, 4);
-		big_mat_ = libfreenect2::Frame(1920, 1082, 4);
-		listener_ = libfreenect2::SyncMultiFrameListener(libfreenect2::Frame::Color | libfreenect2::Frame::Ir | libfreenect2::Frame::Depth);
-
-		signal(SIGINT,sigint_handler);
 
 		if(freenect2_.enumerateDevices() == 0)
 		{
@@ -99,53 +62,38 @@ namespace pcl {
 
 		serial_ = freenect2_.getDefaultDeviceSerialNumber();
 		std::cout << "creating OpenCL processor" << std::endl;
-		pipeline_ = new libfreenect2::OpenCLPacketPipeline();
+        pipeline_ = new libfreenect2::OpenGLPacketPipeline();
 
 		dev_ = freenect2_.openDevice(serial_, pipeline_);
 
-/*
-		if (!m_pKinectSensor || FAILED(hr)) {
-			throw exception("No ready Kinect found");
-		}*/
-		m_colorSize = Size(cColorWidth, cColorHeight);
-		m_depthSize = Size(cDepthWidth, cDepthHeight);
-		m_pColorRGBX = new RGBQUAD[cColorWidth * cColorHeight];
-		m_pColorCoordinates = new ColorSpacePoint[cDepthHeight * cDepthWidth];
-		m_pCameraSpacePoints = new CameraSpacePoint[cColorHeight * cColorWidth];
+        dev_->setColorFrameListener(&listener_);
+        dev_->setIrAndDepthFrameListener(&listener_);
+
 
 		// create callback signals
 		image_signal_             = createSignal<sig_cb_libfreenect_image> ();
 		depth_image_signal_    = createSignal<sig_cb_libfreenect_depth_image> ();
 		image_depth_image_signal_    = createSignal<sig_cb_libfreenect_image_depth_image> ();
 		point_cloud_rgba_signal_  = createSignal<sig_cb_libfreenect_point_cloud_rgba> ();
-		all_data_signal_  = createSignal<sig_cb_libfreenect_all_data> ();
-		/*ir_image_signal_       = createSignal<sig_cb_microsoft_ir_image> ();
-		point_cloud_signal_    = createSignal<sig_cb_microsoft_point_cloud> ();
-		point_cloud_i_signal_  = createSignal<sig_cb_microsoft_point_cloud_i> ();
-		point_cloud_rgb_signal_   = createSignal<sig_cb_microsoft_point_cloud_rgb> ();
-		*/
 
+        //All dataCallback?
 		rgb_sync_.addCallback (boost::bind (&Libfreenect2Grabber::imageDepthImageCallback, this, _1, _2));
 	}
 
 	void Libfreenect2Grabber::start() {
 		block_signals();
-		dev_->setColorFrameListener(&listener_);
-		dev_->setIrAndDepthFrameListener(&listener_);
+		int iret1 = 0;
+
+
 		dev_->start();
-
-		registration_ = new libfreenect2::Registration(dev_->getIrCameraParams(), dev_->getColorCameraParams());
-
-		prepareMake3D(dev_->getIrCameraParams());
-		//GetCameraSettings();
-		/*hDepthMutex = CreateMutex(NULL,false,NULL);
-		if(hDepthMutex == NULL)
-		throw exception("Could not create depth mutex");
-		hColorMutex = CreateMutex(NULL,false,NULL);
-		if(hColorMutex == NULL)
-		throw exception("Could not create color mutex");*/
-		//hFrameEvent = (WAITABLE_HANDLE)CreateEvent(NULL,FALSE,FALSE,NULL);
-
+        registration_ = new libfreenect2::Registration(dev_->getIrCameraParams(), dev_->getColorCameraParams());
+        prepareMake3D(dev_->getIrCameraParams());
+        iret1 = pthread_create( &pKinectThread, NULL, ProcessThread,  this);
+        if(iret1)
+        {
+					fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
+					exit(EXIT_FAILURE);
+        }
 		unblock_signals();
 	}
 	void Libfreenect2Grabber::prepareMake3D(const libfreenect2::Freenect2Device::IrCameraParams & depth_p)
@@ -172,114 +120,96 @@ namespace pcl {
 		return std::move(r);
 	}
 
-	cv::Mat Libfreenect2Grabber::getDepth(){
-		listener_.waitForNewFrame(frames_);
-		libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
+	cv::Mat Libfreenect2Grabber::getDepth(libfreenect2::Frame * depthFrameRef){
+		libfreenect2::Frame * depth = depthFrameRef;
 		cv::Mat tmp(depth->height, depth->width, CV_8UC4, depth->data);
 		cv::Mat r = tmp.clone();
-		listener_.release(frames_);
 		return std::move(r);
 	}
 
-	std::pair<cv::Mat, cv::Mat> Libfreenect2Grabber::getDepthRgb(){
-		listener_.waitForNewFrame(frames_);
-		libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
-		libfreenect2::Frame * rgb = frames_[libfreenect2::Frame::Color];
+	std::pair<cv::Mat, cv::Mat> Libfreenect2Grabber::getDepthRgb(libfreenect2::Frame * colorFrameRef, libfreenect2::Frame *depthFrameRef){
+		libfreenect2::Frame * depth = depthFrameRef;
+		libfreenect2::Frame * rgb = colorFrameRef;
 		registration_->apply(rgb, depth, &undistorted_, &registered_);
 		cv::Mat tmp_depth(undistorted_.height, undistorted_.width, CV_8UC4, undistorted_.data);
 		cv::Mat tmp_color(registered_.height, registered_.width, CV_8UC4, registered_.data);
 		cv::Mat r = tmp_color.clone();
 		cv::Mat d = tmp_depth.clone();
-		listener_.release(frames_);
 		return std::move(std::pair<cv::Mat, cv::Mat>(r,d));
 	}
 
 
-	pcl::PointCloud<pcl::PointXYZRGB>::Ptr Libfreenect2Grabber::getCloud(){
 
-		listener_.waitForNewFrame(frames_);
-		libfreenect2::Frame * rgb = frames_[libfreenect2::Frame::Color];
-		libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
+ void Libfreenect2Grabber::getCloud(const boost::shared_ptr<cv::Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGB>> &cloud)
+ const {
 
-		registration_->apply(rgb, depth, &undistorted_, &registered_, true, &big_mat_);
-		const short w = undistorted_.width;
-		const short h = undistorted_.height;
+	//	listener_.waitForNewFrame(frames_);
+        libfreenect2::Frame rgb = libfreenect2::Frame(1920, 1082, 4);
+        libfreenect2::Frame depthf = libfreenect2::Frame(512, 424, 4);
 
-		pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>(w, h));
+        rgb.data = (unsigned char*) img->data;
+        depthf.data = (unsigned char*) depth.data;
 
-		const float * itD0 = (float *)undistorted_.data;
-		const char * itRGB0 = (char *)registered_.data;
-		pcl::PointXYZRGB * itP = &cloud->points[0];
+        const libfreenect2::Frame *  rgb_ptr = const_cast<const libfreenect2::Frame *> (&rgb);
+        const libfreenect2::Frame *  depthf_ptr =const_cast<const libfreenect2::Frame *> (&depthf);
 
-		for(int y = 0; y < h; ++y){
+        registration_->apply(rgb_ptr, depthf_ptr, &undistorted_, &registered_, true, &big_mat_);
 
-			const unsigned int offset = y * w;
-			const float * itD = itD0 + offset;
-			const char * itRGB = itRGB0 + offset * 4;
-			const float dy = rowmap(y);
+        const short w = undistorted_.width;
+        const short h = undistorted_.height;
 
-			for(size_t x = 0; x < w; ++x, ++itP, ++itD, itRGB += 4 )
-			{
-				const float depth_value = *itD / 1000.0f;
+      //cloud( = new )pcl::PointCloud<pcl::PointXYZRGB>(w, h);
+        cloud->width = w;
+        cloud->height = h;
 
-				if(!isnan(depth_value) && !(abs(depth_value) < 0.0001)){
+        const float * itD0 = (float *)undistorted_.data;
+        const char * itRGB0 = (char *)registered_.data;
+        pcl::PointXYZRGB * itP = &cloud->points[0];
 
-					const float rx = colmap(x) * depth_value;
-									const float ry = dy * depth_value;
-					itP->z = depth_value;
-					itP->x = rx;
-					itP->y = ry;
+        for(int y = 0; y < h; ++y){
 
-					itP->b = itRGB[0];
-					itP->g = itRGB[1];
-					itP->r = itRGB[2];
-				}
-			}
-		}
-		listener_.release(frames_);
-		return cloud;
+            const unsigned int offset = y * w;
+            const float * itD = itD0 + offset;
+            const char * itRGB = itRGB0 + offset * 4;
+            const float dy = rowmap(y);
+
+            for(size_t x = 0; x < w; ++x, ++itP, ++itD, itRGB += 4 )
+            {
+                const float depth_value = *itD / 1000.0f;
+
+                if(!isnan(depth_value) && !(abs(depth_value) < 0.0001)){
+
+                    const float rx = colmap(x) * depth_value;
+                    const float ry = dy * depth_value;
+                    itP->z = depth_value;
+                    itP->x = rx;
+                    itP->y = ry;
+
+                    itP->b = itRGB[0];
+                    itP->g = itRGB[1];
+                    itP->r = itRGB[2];
+                }
+            }
+        }
+      //      listener_.release(frames_);
+
 	}
 	void Libfreenect2Grabber::stop() {
 
 		dev_->stop();
-		dev_->close();
-	/*
-		//stop the ProcessThread
-		if(hStopEvent != NULL) {
-			//signal the process to stop
-			SetEvent(hStopEvent);
-			if(hKinectThread != NULL) {
-				WaitForSingleObject(hKinectThread,INFINITE);
-				CloseHandle(hKinectThread);
-				hKinectThread = NULL;
-			}
-			CloseHandle(hStopEvent);
-			hStopEvent = NULL;
+        dev_->close();
+        //pth
+        pthread_cancel(pKinectThread);
 
-			m_pMultiSourceFrameReader->UnsubscribeMultiSourceFrameArrived(hFrameEvent);
-			CloseHandle((HANDLE)hFrameEvent);
-			hFrameEvent = NULL;
-			/*CloseHandle(hDepthMutex);
-			hDepthMutex = NULL;
-			CloseHandle(hColorMutex);
-			hColorMutex = NULL;
-		}*/
-		if (m_pColorRGBX) {
-			delete [] m_pColorRGBX;
-			m_pColorRGBX = NULL;
+		if (registration_) {
+			delete [] registration_;
+			registration_ = NULL;
 		}
-		if(m_pColorCoordinates) {
-			delete [] m_pColorCoordinates;
-			m_pColorCoordinates = NULL;
-		}
-		if(m_pCameraSpacePoints) {
-			delete [] m_pCameraSpacePoints;
-			m_pCameraSpacePoints = NULL;
-		}
+
 	}
 
 	bool Libfreenect2Grabber::isRunning () const {
-		return (!(hKinectThread == NULL));
+        return (!(pKinectThread == NULL));
 	}
 
 	Libfreenect2Grabber::~Libfreenect2Grabber() {
@@ -300,39 +230,7 @@ namespace pcl {
 		int idx;
 		bool quit = false;
 		while(!quit) {
-			// Wait for any of the events to be signalled
-			//idx = WaitForMultipleObjects(1,handles,FALSE,100);
-			if (listener_.waitForNewFrame(frames_))
-			{
-					FrameArrived(frames_);
-					listener_.release(frames_);
-			}
-			else
-				continue;
-/*
-			switch(idx) {
-			case WAIT_TIMEOUT:
-				continue;
-			case WAIT_OBJECT_0:
-				IMultiSourceFrameArrivedEventArgs *pFrameArgs = nullptr;
-				/*Hash id von Frame in EventArgs */
-				/*Holen der Frame Reference in Frame Arrived
-				HRESULT hr = m_pMultiSourceFrameReader->GetMultiSourceFrameArrivedEventData(hFrameEvent,&pFrameArgs);
-				//frame arrived
-				FrameArrived(pFrameArgs);
-				pFrameArgs->Release();
-				break;
-
-				/*case WAIT_OBJECT_0 + 1:
-				quit = true;
-				continue;
-			}*/
-			//if(WaitForSingleObject(hStopEvent,1) == WAIT_OBJECT_0)
-			//	quit = true;
-			//else {
-			//	//Get the newest frame info
-			//	GetNextFrame();
-			//}
+			FrameArrived();
 		}
 	}
 
@@ -340,17 +238,15 @@ namespace pcl {
 		try {
 			//clean up stuff here
 			stop();
-			if(m_pKinectSensor) {
+			if(dev_) {
 				//Shutdown NUI and Close handles
-				if (m_pMultiSourceFrameReader)
-					SafeRelease(m_pMultiSourceFrameReader);
-				if(m_pCoordinateMapper)
-					SafeRelease(m_pCoordinateMapper);
+				if (pipeline_)
+					SafeRelease(pipeline_);
 				// close the Kinect Sensor
-				if (m_pKinectSensor)
-					m_pKinectSensor->Close();
+				if (dev_)
+					dev_->close();
 
-				SafeRelease(m_pKinectSensor);
+				SafeRelease(dev_);
 			}
 		} catch(...) {
 			//destructor never throws
@@ -364,229 +260,143 @@ namespace pcl {
 	float Libfreenect2Grabber::getFramesPerSecond () const {
 		return 30.0f;
 	}
+    ///TODO: BodyFrame?
+    ///
 
-//Wofür?
-/*
-	void Libfreenect2Grabber::BodyIndexFrameArrived(IBodyIndexFrameReference* pBodyIndexFrameReference) {
-		IBodyIndexFrame* pBodyIndexFrame = NULL;
-		HRESULT hr = pBodyIndexFrameReference->AcquireFrame(&pBodyIndexFrame);
-		if(FAILED(hr))
-			return;
-		//cout << "got a body index frame" << endl;
-		IFrameDescription* pBodyIndexFrameDescription = NULL;
-		int nBodyIndexWidth = 0;
-		int nBodyIndexHeight = 0;
-		UINT nBodyIndexBufferSize = 0;
-		BYTE *pBodyIndexBuffer = NULL;
+	void Libfreenect2Grabber::FrameArrived() {
 
-		// get body index frame data
-		if (SUCCEEDED(hr)) {
-			hr = pBodyIndexFrame->get_FrameDescription(&pBodyIndexFrameDescription);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pBodyIndexFrameDescription->get_Width(&nBodyIndexWidth);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pBodyIndexFrameDescription->get_Height(&nBodyIndexHeight);
-		}
-		if (SUCCEEDED(hr)) {
-			hr = pBodyIndexFrame->AccessUnderlyingBuffer(&nBodyIndexBufferSize, &pBodyIndexBuffer);
-		}
-		SafeRelease(pBodyIndexFrameDescription);
-		SafeRelease(pBodyIndexFrame);
-	}*/
+        listener_.waitForNewFrame(frames_);
+					libfreenect2::Frame * color = frames_[libfreenect2::Frame::Color];
+					libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
+                    if (color != NULL){
+                       // printf("Test color %s \n",color->data);
+						ColorFrameArrived(color);
+                    }
 
-	void Libfreenect2Grabber::FrameArrived(libfreenect2::FrameMap *pArgs) {
-
-
-					ColorFrameArrived(frames_[libfreenect2::Frame::Color])
-					DepthFrameArrived(frames_[libfreenect2::Frame::Depth]);
-	/*	HRESULT hr;
-		IMultiSourceFrameReference *pFrameReference = nullptr;
-
-		//cout << "got a valid frame" << endl;
-		hr = pArgs->get_FrameReference(&pFrameReference);
-		if (SUCCEEDED(hr))
-		{
-			IMultiSourceFrame *pFrame = nullptr;
-			hr = pFrameReference->AcquireFrame(&pFrame);
-			if (FAILED(hr)) {
-				cout << "fail on AcquireFrame" << endl;
-			}
-			IColorFrameReference* pColorFrameReference = nullptr;
-			IDepthFrameReference* pDepthFrameReference = nullptr;
-			IBodyIndexFrameReference* pBodyIndexFrameReference = nullptr;
-			hr = pFrame->get_DepthFrameReference(&pDepthFrameReference);
-			if (SUCCEEDED(hr))
-				DepthFrameArrived(pDepthFrameReference);
-			SafeRelease(pDepthFrameReference);
-
-
-			hr = pFrame->get_ColorFrameReference(&pColorFrameReference);
-			if (SUCCEEDED(hr))
-				ColorFrameArrived(pColorFrameReference);
-			SafeRelease(pColorFrameReference);
-
-			hr = pFrame->get_BodyIndexFrameReference(&pBodyIndexFrameReference);
-			if (SUCCEEDED(hr))
-				BodyIndexFrameArrived(pBodyIndexFrameReference);
-			SafeRelease(pBodyIndexFrameReference);
-
-			pFrameReference->Release();
-		}
-		*/
+                    if (depth != NULL){
+                      //  printf("Test depth %s \n",depth->data);
+						DepthFrameArrived(depth);
+                    }
+         listener_.release(frames_);
 	}
 
-#pragma endregion
-
 	//Camera Functions
-#pragma region Camera
 	void Libfreenect2Grabber::ColorFrameArrived(libfreenect2::Frame * colorFrameRef) {
 
+				float timestamp = colorFrameRef->timestamp;
 				//WaitForSingleObject(hColorMutex,INFINITE);
 				//cout << "creating the image" << endl;
 				Mat tmp = getColor(colorFrameRef);
+			//	libfreenect2::Frame activImageFrame = *colorFrameRef;
 				boost::shared_ptr<Mat> img(new Mat());
 				*img = tmp.clone();
 				if (image_signal_->num_slots () > 0) {
 					//cout << "img signal num slot!" << endl;
 					image_signal_->operator()(img);
 				}
-				if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0 || image_depth_image_signal_->num_slots() > 0)
-					rgb_sync_.add0 (img, m_rgbTime);
+				if (num_slots<sig_cb_libfreenect_point_cloud_rgba>() > 0 || /*all_data_signal_->num_slots() > 0 ||*/ image_depth_image_signal_->num_slots() > 0)
+					rgb_sync_.add0 (img, timestamp);
 				//ReleaseMutex(hColorMutex);
 			}
 
 
-	}
-#pragma endregion
+
 
 	//Depth Functions
-#pragma region Depth
-	void Libfreenect2Grabber::DepthFrameArrived(IDepthFrameReference* pDepthFrameReference) {
 
+	void Libfreenect2Grabber::DepthFrameArrived (libfreenect2::Frame * depthFrameRef) {
+
+			float timestamp = depthFrameRef->timestamp;
 			//WaitForSingleObject(hDepthMutex,INFINITE);
-			Mat tmp = getDepth();
+				Mat tmp = getDepth(depthFrameRef);
+	//		libfreenect2::Frame activDepthFrame = *depthFrameRef;
+                MatDepth depth_img = MatDepth()	;
+                depth_img = *((MatDepth*)(&tmp.clone()));
 
-			MatDepth depth_img = *((MatDepth*)&(tmp.clone()));
-			m_depthTime = nDepthTime;
+
+	//		m_depthTime = nDepthTime;
 			if (depth_image_signal_->num_slots () > 0) {
 				depth_image_signal_->operator()(depth_img);
 			}
-			if (num_slots<sig_cb_microsoft_point_cloud_rgba>() > 0 || all_data_signal_->num_slots() > 0 || image_depth_image_signal_->num_slots() > 0)
-				rgb_sync_.add1 (depth_img, m_depthTime);
+			if (num_slots<sig_cb_libfreenect_point_cloud_rgba>() > 0 || /*all_data_signal_->num_slots() > 0 ||*/ image_depth_image_signal_->num_slots() > 0)
+				rgb_sync_.add1 (depth_img, timestamp);
 			//ReleaseMutex(hDepthMutex);
 		}
 
-	}
-#pragma endregion
 
-#pragma region Cloud
-	void Libfreenect2Grabber::imageDepthImageCallback (const boost::shared_ptr<Mat> &image,
-		const MatDepth &depth_image)
+
+	void Libfreenect2Grabber::imageDepthImageCallback (const boost::shared_ptr<Mat> &image, const MatDepth &depth_image)
 	{
-		boost::shared_ptr<PointCloud<PointXYZRGBA>> cloud;
+
+			boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB>> cloud;
 		// check if we have color point cloud slots
-		if(point_cloud_rgba_signal_->num_slots() > 0 || all_data_signal_->num_slots() > 0)
+		if(point_cloud_rgba_signal_->num_slots() > 0 /*|| all_data_signal_->num_slots() > 0*/)
 			cloud = convertToXYZRGBAPointCloud(image, depth_image);
 		if (point_cloud_rgba_signal_->num_slots () > 0)
 			point_cloud_rgba_signal_->operator()(cloud);
-		if(all_data_signal_->num_slots() > 0) {
+	//	if(all_data_signal_->num_slots() > 0) {
 			//boost::shared_ptr<KinectData> data (new KinectData(image,depth_image,*cloud));
 			//all_data_signal_->operator()(data);
-		}
+	//	}
 
 		if(image_depth_image_signal_->num_slots() > 0) {
 			float constant = 1.0f;
 			image_depth_image_signal_->operator()(image,depth_image,constant);
 		}
+
+        //listener_.release(frames_);
 	}
 
-	void Libfreenect2Grabber::GetPointCloudFromData(const boost::shared_ptr<Mat> &img, const MatDepth &depth, boost::shared_ptr<PointCloud<PointXYZRGBA>> &cloud, bool alignToColor, bool preregistered) const
-	{
-		if(!img || img->empty() || depth.empty()) {
-			cout << "empty img or depth" << endl;
-			return;
-		}
-//Prepare3d?
-		UINT16 *pDepth = (UINT16*)depth.data;
-		int length = cDepthHeight * cDepthWidth, length2;
-		HRESULT hr;
-		if(alignToColor) {
-			length2 = cColorHeight * cColorWidth;
-			hr = m_pCoordinateMapper->MapColorFrameToCameraSpace(length,pDepth,length2,m_pCameraSpacePoints);
-			if(FAILED(hr))
-				throw exception("Couldn't map to camera!");
-		} else {
-			hr = m_pCoordinateMapper->MapDepthFrameToCameraSpace(length,pDepth,length,m_pCameraSpacePoints);
-			if(FAILED(hr))
-				throw exception("Couldn't map to camera!");
-			hr = m_pCoordinateMapper->MapCameraPointsToColorSpace(length,m_pCameraSpacePoints,length,m_pColorCoordinates);
-			if(FAILED(hr))
-				throw exception("Couldn't map color!");
-		}
-
-		PointCloud<PointXYZRGBA>::iterator pCloud = cloud->begin();
-		ColorSpacePoint *pColor = m_pColorCoordinates;
-		CameraSpacePoint *pCamera = m_pCameraSpacePoints;
-		float bad_point = std::numeric_limits<float>::quiet_NaN ();
-		int x,y, safeWidth = cColorWidth - 1, safeHeight = cColorHeight - 1;
-		int width = alignToColor ? cColorWidth : cDepthWidth;
-		int height = alignToColor ? cColorHeight : cDepthHeight;
-		for(int j = 0; j < height; j++) {
-			for(int i = 0; i < width; i++) {
-				PointXYZRGBA loc;
-				Vec4b color;
-				if(!preregistered && !alignToColor) {
-					x = Clamp<int>(int(pColor->X),0,safeWidth);
-					y = Clamp<int>(int(pColor->Y),0,safeHeight);
-					//int index = y * cColorHeight + x;
-					color = img->at<Vec4b>(y,x);
-				} else
-					color = img->at<Vec4b>(j,i);
-				loc.b = color[0];
-				loc.g = color[1];
-				loc.r = color[2];
-				loc.a = 255;
-				if(pCamera->Z == 0) {
-					loc.x = loc.y = loc.z = bad_point;
-				} else {
-					loc.x = pCamera->X;
-					loc.y = pCamera->Y;
-					loc.z = pCamera->Z;
-				}
-				//cout << "Iter: " << i << ", " << j << endl;
-				*pCloud = loc;
-				++pCamera; ++pCloud; ++pColor;
-			}
-		}
-		img->release();
-	}
-
-	boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBA>> Libfreenect2Grabber::convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image,
+    boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB>> Libfreenect2Grabber::convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image,
 		const MatDepth &depth_image) const {
 
-			boost::shared_ptr<PointCloud<PointXYZRGBA> > cloud (new PointCloud<PointXYZRGBA>);
 
-			cloud->header.frame_id =  "/libfreenect_microsoft_rgb_optical_frame";
-	/*		cloud->height = m_largeCloud ? cColorHeight : cDepthHeight;
-			cloud->width = m_largeCloud ? cColorWidth : cDepthWidth;
-			cloud->is_dense = false;
-			cloud->points.resize (cloud->height * cloud->width);
-			GetPointCloudFromData(image,depth_image,cloud,m_largeCloud,false);
-			*/
-			cloud = getCloud();
-			cloud->sensor_origin_.setZero ();
-			cloud->sensor_orientation_.w () = 1.0;
-			cloud->sensor_orientation_.x () = 0.0;
-			cloud->sensor_orientation_.y () = 0.0;
-			cloud->sensor_orientation_.z () = 0.0;
+        libfreenect2::Frame * rgb = frames_[libfreenect2::Frame::Color];
+        libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
 
+        registration_->apply(rgb, depth, &undistorted_, &registered_, true, &big_mat_);
+        const short w = undistorted_.width;
+        const short h = undistorted_.height;
 
+     //   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_ptr = cloud.get();
+        boost::shared_ptr<PointCloud<PointXYZRGB> > cloud (new PointCloud<PointXYZRGB>(w,h));
+        const float * itD0 = (float *)undistorted_.data;
+        const char * itRGB0 = (char *)registered_.data;
 
+        pcl::PointXYZRGB * itP = &cloud->points[0];
 
-			return cloud;
+        for(int y = 0; y < h; ++y){
+
+            const unsigned int offset = y * w;
+            const float * itD = itD0 + offset;
+            const char * itRGB = itRGB0 + offset * 4;
+            const float dy = rowmap(y);
+
+            for(size_t x = 0; x < w; ++x, ++itP, ++itD, itRGB += 4 )
+            {
+                const float depth_value = *itD / 1000.0f;
+
+                if(!isnan(depth_value) && !(abs(depth_value) < 0.0001)){
+
+                    const float rx = colmap(x) * depth_value;
+                    const float ry = dy * depth_value;
+                    itP->z = depth_value;
+                    itP->x = rx;
+                    itP->y = ry;
+
+                    itP->b = itRGB[0];
+                    itP->g = itRGB[1];
+                    itP->r = itRGB[2];
+                }
+            }
+        }
+            cloud->sensor_origin_.setZero ();
+            cloud->sensor_orientation_.w () = 1.0;
+            cloud->sensor_orientation_.x () = 0.0;
+            cloud->sensor_orientation_.y () = 0.0;
+            cloud->sensor_orientation_.z () = 0.0;
+          //  listener_.release(frames_);
+            return (cloud);
 	}
 
-#pragma endregion
 };
