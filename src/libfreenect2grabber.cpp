@@ -16,6 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 ??
+
+Modified for 
 */
 // TestVideoSegmentation.cpp : Defines the entry point for the console application.
 //
@@ -62,12 +64,12 @@ namespace pcl {
 
 		serial_ = freenect2_.getDefaultDeviceSerialNumber();
 		std::cout << "creating OpenCL processor" << std::endl;
-        pipeline_ = new libfreenect2::OpenGLPacketPipeline();
+        	pipeline_ = new libfreenect2::OpenCLPacketPipeline();
 
 		dev_ = freenect2_.openDevice(serial_, pipeline_);
 
-        dev_->setColorFrameListener(&listener_);
-        dev_->setIrAndDepthFrameListener(&listener_);
+        	dev_->setColorFrameListener(&listener_);
+        	dev_->setIrAndDepthFrameListener(&listener_);
 
 
 		// create callback signals
@@ -114,17 +116,17 @@ namespace pcl {
 
 
 	cv::Mat Libfreenect2Grabber::getColor(libfreenect2::Frame * colorFrameRef){
-		libfreenect2::Frame * rgb = colorFrameRef;
+		libfreenect2::Frame * rgb = frames_[libfreenect2::Frame::Color];
 		cv::Mat tmp(rgb->height, rgb->width, CV_8UC4, rgb->data);
 		cv::Mat r = tmp.clone();
-		return std::move(r);
+		return (r);
 	}
 
 	cv::Mat Libfreenect2Grabber::getDepth(libfreenect2::Frame * depthFrameRef){
-		libfreenect2::Frame * depth = depthFrameRef;
+		libfreenect2::Frame * depth = frames_[libfreenect2::Frame::Depth];
 		cv::Mat tmp(depth->height, depth->width, CV_8UC4, depth->data);
 		cv::Mat r = tmp.clone();
-		return std::move(r);
+		return (r);
 	}
 
 	std::pair<cv::Mat, cv::Mat> Libfreenect2Grabber::getDepthRgb(libfreenect2::Frame * colorFrameRef, libfreenect2::Frame *depthFrameRef){
@@ -162,8 +164,14 @@ namespace pcl {
         cloud->width = w;
         cloud->height = h;
 
-        const float * itD0 = (float *)undistorted_.data;
-        const char * itRGB0 = (char *)registered_.data;
+  	cv::Mat tmp_itD0(undistorted_.height, undistorted_.width, CV_8UC4, undistorted_.data);
+        cv::Mat tmp_itRGB0(registered_.height, registered_.width, CV_8UC4, registered_.data);
+  
+        cv::flip(tmp_itD0,tmp_itD0,1);
+        cv::flip(tmp_itRGB0,tmp_itRGB0,1);
+
+        const float * itD0 = (float *) tmp_itD0.ptr();
+        const char * itRGB0 = (char *) tmp_itRGB0.ptr();
         pcl::PointXYZRGB * itP = &cloud->points[0];
 
         for(int y = 0; y < h; ++y){
@@ -347,7 +355,7 @@ namespace pcl {
         //listener_.release(frames_);
 	}
 
-    boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB>> Libfreenect2Grabber::convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image,
+    boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB> > Libfreenect2Grabber::convertToXYZRGBAPointCloud (const boost::shared_ptr<cv::Mat> &image,
 		const MatDepth &depth_image) const {
 
 
@@ -377,7 +385,6 @@ namespace pcl {
                 const float depth_value = *itD / 1000.0f;
 
                 if(!isnan(depth_value) && !(abs(depth_value) < 0.0001)){
-
                     const float rx = colmap(x) * depth_value;
                     const float ry = dy * depth_value;
                     itP->z = depth_value;

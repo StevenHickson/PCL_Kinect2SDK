@@ -1,0 +1,9 @@
+build/CMakeFiles/3.0.2/CompilerIdC/CMakeCCompilerId.c
+build/CMakeFiles/3.0.2/CompilerIdCXX/CMakeCXXCompilerId.cpp
+CMakeFiles/3.0.2/CompilerIdC/CMakeCCompilerId.c
+CMakeFiles/3.0.2/CompilerIdCXX/CMakeCXXCompilerId.cpp
+include/Kinect_helper.h
+include/libfreenect2grabber.h
+src/libfreenect2grabber.cpp
+src/Microsoft_grabber2.cpp
+src/PCL_Kinect2SDK.cpp
